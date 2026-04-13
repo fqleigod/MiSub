@@ -28,7 +28,7 @@ function buildOutbound(proxy) {
             password: proxy.password || '',
             tls: {
                 enabled: true,
-                server_name: proxy.sni || proxy.servername || server,
+                server_name: proxy.servername ?? proxy.sni ?? server,
                 insecure: proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true
             }
         };
@@ -53,6 +53,8 @@ function buildOutbound(proxy) {
             server_port: serverPort,
             uuid: proxy.uuid || '',
             security: proxy.cipher || 'auto',
+            udp_relay_mode: proxy['udp-relay-mode'] || 'native',
+            congestion_control: proxy['congestion-control'] || 'cubic',
             alter_id: Number.isFinite(Number(proxy.alterId)) ? Number(proxy.alterId) : 0
         };
 
@@ -82,7 +84,7 @@ function buildOutbound(proxy) {
         if (proxy.tls || proxy.sni || proxy.servername) {
             outbound.tls = {
                 enabled: true,
-                server_name: proxy.sni || proxy.servername || server,
+                server_name: proxy.servername ?? proxy.sni ?? server,
                 insecure: proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true
             };
             if (proxy.alpn) outbound.tls.alpn = Array.isArray(proxy.alpn) ? proxy.alpn : [proxy.alpn];
@@ -114,15 +116,30 @@ function buildOutbound(proxy) {
                 type: 'grpc',
                 service_name: grpcOpts?.['grpc-service-name'] || grpcOpts?.serviceName || 'grpc'
             };
+        } else if (network === 'httpupgrade') {
+            const httpupgradeOpts = proxy['httpupgrade-opts'] || proxy.httpupgradeOpts;
+            outbound.transport = {
+                type: 'httpupgrade',
+                path: httpupgradeOpts?.path || '/',
+                host: httpupgradeOpts?.host || ''
+            };
         }
 
         if (proxy.tls || proxy.sni || proxy.servername) {
             outbound.tls = {
                 enabled: true,
-                server_name: proxy.sni || proxy.servername || server,
+                server_name: proxy.servername ?? proxy.sni ?? server,
                 insecure: proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true
             };
-            
+
+            const fingerprint = proxy['client-fingerprint'] || proxy.clientFingerprint || proxy.fp;
+            if (fingerprint) {
+                outbound.tls.utls = {
+                    enabled: true,
+                    fingerprint: fingerprint
+                };
+            }
+
             const realityOpts = proxy['reality-opts'] || proxy.realityOpts;
             if (realityOpts) {
                 outbound.tls.reality = {
@@ -130,6 +147,9 @@ function buildOutbound(proxy) {
                     public_key: realityOpts['public-key'] || realityOpts.publicKey || '',
                     short_id: realityOpts['short-id'] || realityOpts.shortId || ''
                 };
+                if (realityOpts['spider-x'] || realityOpts.spiderX) {
+                    outbound.tls.reality.spider_x = realityOpts['spider-x'] || realityOpts.spiderX;
+                }
             }
         }
         return outbound;
@@ -144,14 +164,14 @@ function buildOutbound(proxy) {
             password: proxy.password || '',
             tls: {
                 enabled: true,
-                server_name: proxy.sni || proxy.servername || server,
+                server_name: proxy.servername ?? proxy.sni ?? server,
                 insecure: proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true
             }
         };
     }
 
     if (type === 'tuic') {
-        return {
+        const outbound = {
             tag,
             type: 'tuic',
             server,
@@ -160,10 +180,14 @@ function buildOutbound(proxy) {
             password: proxy.password || '',
             tls: {
                 enabled: true,
-                server_name: proxy.sni || proxy.servername || server,
+                server_name: proxy.servername ?? proxy.sni ?? server,
                 insecure: proxy['skip-cert-verify'] === true || proxy.skipCertVerify === true
             }
         };
+        if (proxy.alpn) outbound.tls.alpn = Array.isArray(proxy.alpn) ? proxy.alpn : [proxy.alpn];
+        if (proxy['congestion-control']) outbound.congestion_control = proxy['congestion-control'];
+        if (proxy['udp-relay-mode']) outbound.udp_relay_mode = proxy['udp-relay-mode'];
+        return outbound;
     }
 
     if (type === 'wireguard') {
